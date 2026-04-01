@@ -1,0 +1,16 @@
+[Unit]
+Description=MiniMax Anthropic API Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/homeassistant
+ExecStart=/usr/bin/python3 /homeassistant/minimax_daemon.py --api-key YOUR_API_KEY --port 8124
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

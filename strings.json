@@ -1,0 +1,105 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Already configured. Only a single configuration is permitted.",
+      "reauth_successful": "Reauthentication successful."
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to MiniMax API.",
+      "invalid_auth": "Invalid API key.",
+      "unknown": "Unknown error occurred."
+    },
+    "step": {
+      "user": {
+        "data": {
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "api_key": "Your MiniMax API key from the MiniMax platform."
+        },
+        "description": "Set up MiniMax integration by providing your API key."
+      }
+    },
+    "title": "MiniMax"
+  },
+  "config_subentries": {
+    "conversation": {
+      "abort": {
+        "entry_not_loaded": "Cannot add things while the configuration is disabled.",
+        "reconfigure_successful": "Reconfiguration successful."
+      },
+      "entry_type": "Conversation agent",
+      "error": {},
+      "initiate_flow": {
+        "reconfigure": "Reconfigure conversation agent",
+        "user": "Add conversation agent"
+      },
+      "step": {
+        "set_options": {
+          "data": {
+            "conversation_tts_enabled": "Conversation TTS Enabled",
+            "name": "Name",
+            "prompt": "Prompt",
+            "recommended": "Use Recommended Settings"
+          },
+          "data_description": {
+            "conversation_tts_enabled": "Enable text-to-speech for conversation responses",
+            "prompt": "Instruct how the AI assistant should respond to voice commands."
+          }
+        }
+      }
+    },
+    "stt": {
+      "abort": {
+        "entry_not_loaded": "Cannot add while the configuration is disabled.",
+        "reconfigure_successful": "Reconfiguration successful."
+      },
+      "entry_type": "Speech-to-text",
+      "initiate_flow": {
+        "reconfigure": "Reconfigure speech-to-text",
+        "user": "Add speech-to-text"
+      },
+      "step": {
+        "set_options": {
+          "data": {
+            "name": "Name",
+            "prompt": "Prompt",
+            "recommended": "Use Recommended Settings"
+          },
+          "data_description": {
+            "prompt": "Instruct how to transcribe the audio."
+          }
+        }
+      }
+    },
+    "tts": {
+      "abort": {
+        "entry_not_loaded": "Cannot add while the configuration is disabled.",
+        "reconfigure_successful": "Reconfiguration successful."
+      },
+      "entry_type": "Text-to-speech",
+      "initiate_flow": {
+        "reconfigure": "Reconfigure text-to-speech",
+        "user": "Add text-to-speech"
+      },
+      "step": {
+        "set_options": {
+          "data": {
+            "name": "Name",
+            "pitch": "Pitch",
+            "recommended": "Use Recommended Settings",
+            "speed": "Speed",
+            "voice_id": "Voice",
+            "vol": "Volume"
+          },
+          "data_description": {
+            "pitch": "Voice pitch adjustment (-10 to 10)",
+            "speed": "Speech speed multiplier (0.5 to 2.0)",
+            "voice_id": "Select the voice for text-to-speech output",
+            "vol": "Volume level (0.0 to 2.0)"
+          }
+        }
+      }
+    }
+  }
+}
