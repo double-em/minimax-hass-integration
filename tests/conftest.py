@@ -2,20 +2,39 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from typing import Any
+from unittest.mock import patch
+
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.plugins import (  # noqa: F401
+    enable_custom_integrations,
+)
 
 from homeassistant.core import HomeAssistant
 
 pytest_plugins = "pytest_homeassistant_custom_component"
 
 
-@pytest.fixture
-def enable_custom_integrations(hass: HomeAssistant) -> None:
-    """Enable custom integrations loading."""
-    from custom_components.minimax.const import DOMAIN
+@pytest.fixture(name="skip_notifications")
+def skip_notifications_fixture() -> Generator:
+    """Skip notification calls."""
+    with (
+        patch("homeassistant.components.persistent_notification.async_create"),
+        patch("homeassistant.components.persistent_notification.async_dismiss"),
+    ):
+        yield
 
-    hass.data.setdefault(DOMAIN, {})
+
+@pytest.fixture(autouse=True)
+def minimax_fixture(
+    socket_enabled: Any,
+    skip_notifications: Any,
+    enable_custom_integrations: Any,  # noqa: F811
+    hass: Any,
+) -> None:
+    """Automatically use an ordered combination of fixtures."""
+    pass
 
 
 @pytest.fixture

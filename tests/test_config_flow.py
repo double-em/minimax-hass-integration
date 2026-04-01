@@ -96,7 +96,7 @@ class TestMiniMaxConfigFlow:
         )
 
         assert result["type"] == FlowResultType.FORM
-        assert result["errors"] == {"api_key": "invalid_api_key"}
+        assert result["errors"] == {"base": "invalid_auth"}
 
     async def test_user_flow_connection_error(
         self,
@@ -115,7 +115,7 @@ class TestMiniMaxConfigFlow:
         )
 
         assert result["type"] == FlowResultType.FORM
-        assert result["errors"] == {"api_key": "connection_error"}
+        assert result["errors"] == {"base": "cannot_connect"}
 
 
 class TestMiniMaxSubentryFlow:
@@ -125,11 +125,10 @@ class TestMiniMaxSubentryFlow:
         """Test subentry flow for conversation."""
         config_entry = create_mock_minimax_config_entry(hass)
 
-        flow = config_flow.LLMSubentryFlowHandler(
-            config_entry=config_entry,
-            subentry_type="conversation",
-        )
+        flow = config_flow.LLMSubentryFlowHandler()
         flow.hass = hass
+        flow.handler = (config_flow.DOMAIN, "conversation")
+        flow.context = {"source": "user"}
 
         result = await flow.async_step_user(user_input={})
 
@@ -139,11 +138,10 @@ class TestMiniMaxSubentryFlow:
         """Test subentry flow for TTS."""
         config_entry = create_mock_minimax_config_entry(hass)
 
-        flow = config_flow.LLMSubentryFlowHandler(
-            config_entry=config_entry,
-            subentry_type="tts",
-        )
+        flow = config_flow.LLMSubentryFlowHandler()
         flow.hass = hass
+        flow.handler = (config_flow.DOMAIN, "tts")
+        flow.context = {"source": "user"}
 
         result = await flow.async_step_user(user_input={})
 
@@ -153,11 +151,10 @@ class TestMiniMaxSubentryFlow:
         """Test subentry flow for STT."""
         config_entry = create_mock_minimax_config_entry(hass)
 
-        flow = config_flow.LLMSubentryFlowHandler(
-            config_entry=config_entry,
-            subentry_type="stt",
-        )
+        flow = config_flow.LLMSubentryFlowHandler()
         flow.hass = hass
+        flow.handler = (config_flow.DOMAIN, "stt")
+        flow.context = {"source": "user"}
 
         result = await flow.async_step_user(user_input={})
 

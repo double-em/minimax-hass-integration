@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import base64
 import logging
-from typing import Any, cast
+from typing import Any
 
 import anthropic
 import async_timeout
+import httpx
 from aiohttp import ClientSession
 
 from .const import (
@@ -38,12 +38,10 @@ class MiniMaxApiClient:
         """Construct API client."""
         self._api_key = api_key
         self._session = session
-        self._anthropic = anthropic.Anthropic(
+        self._anthropic = anthropic.AsyncAnthropic(
             api_key=api_key,
             base_url=MINIMAX_ANTHROPIC_API_URL.rsplit("/v1", 1)[0],
-            http_client=anthropic.DictableHttpxClient(
-                timeout=async_timeout.timeout(TIMEOUT)
-            ),
+            http_client=httpx.AsyncClient(timeout=async_timeout.timeout(TIMEOUT)),
         )
 
     async def async_chat(
@@ -56,7 +54,7 @@ class MiniMaxApiClient:
     ) -> dict[str, Any]:
         """Send chat request using Anthropic SDK."""
         try:
-            response = self._anthropic.messages.create(
+            response = await self._anthropic.messages.create(
                 model=model,
                 max_tokens=max_tokens,
                 system=system_prompt,

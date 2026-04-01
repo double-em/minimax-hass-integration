@@ -64,7 +64,7 @@ class MiniMaxSTTEntity(stt.SpeechToTextEntity):
     @property
     def supported_formats(self) -> list[stt.AudioFormats]:
         """Return a list of supported formats."""
-        return [stt.AudioFormats.WAV, stt.AudioFormats.OGG, stt.AudioFormats.MP3]
+        return [stt.AudioFormats.WAV, stt.AudioFormats.OGG]
 
     @property
     def supported_codecs(self) -> list[stt.AudioCodecs]:

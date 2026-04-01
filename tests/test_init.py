@@ -30,24 +30,34 @@ class TestAsyncSetupEntry:
         config_entry = create_mock_minimax_config_entry(hass)
         mock_client = create_mock_minimax_client()
 
-        with patch(
-            "custom_components.minimax.MiniMaxApiClient",
-            return_value=mock_client,
+        with (
+            patch(
+                "custom_components.minimax.MiniMaxApiClient",
+                return_value=mock_client,
+            ),
+            patch.object(
+                hass.config_entries, "async_forward_entry_setups", return_value=True
+            ),
         ):
             result = await async_setup_entry(hass, config_entry)
 
         assert result is True
-        assert config_entry.entry_id in hass.data[DOMAIN]
-        assert isinstance(hass.data[DOMAIN][config_entry.entry_id], MiniMaxApiClient)
+        assert hasattr(config_entry, "runtime_data")
+        assert config_entry.runtime_data is mock_client
 
     @pytest.mark.asyncio
     async def test_setup_entry_creates_client(self, hass):
         """Test that setup_entry creates an API client."""
         config_entry = create_mock_minimax_config_entry(hass)
 
-        with patch(
-            "custom_components.minimax.MiniMaxApiClient",
-        ) as mock_client_class:
+        with (
+            patch(
+                "custom_components.minimax.MiniMaxApiClient",
+            ) as mock_client_class,
+            patch.object(
+                hass.config_entries, "async_forward_entry_setups", return_value=True
+            ),
+        ):
             mock_instance = MagicMock()
             mock_instance.async_verify_connection = AsyncMock(return_value=True)
             mock_client_class.return_value = mock_instance
@@ -68,23 +78,33 @@ class TestAsyncUnloadEntry:
         config_entry = create_mock_minimax_config_entry(hass)
         mock_client = create_mock_minimax_client()
 
-        with patch(
-            "custom_components.minimax.MiniMaxApiClient",
-            return_value=mock_client,
+        with (
+            patch(
+                "custom_components.minimax.MiniMaxApiClient",
+                return_value=mock_client,
+            ),
+            patch.object(
+                hass.config_entries, "async_forward_entry_setups", return_value=True
+            ),
         ):
             await async_setup_entry(hass, config_entry)
 
-        result = await async_unload_entry(hass, config_entry)
+        with patch.object(
+            hass.config_entries, "async_unload_platforms", return_value=True
+        ):
+            result = await async_unload_entry(hass, config_entry)
 
         assert result is True
-        assert config_entry.entry_id not in hass.data[DOMAIN]
 
     @pytest.mark.asyncio
     async def test_unload_entry_not_setup(self, hass):
         """Test unloading an entry that was never setup."""
         config_entry = create_mock_minimax_config_entry(hass)
 
-        result = await async_unload_entry(hass, config_entry)
+        with patch.object(
+            hass.config_entries, "async_unload_platforms", return_value=True
+        ):
+            result = await async_unload_entry(hass, config_entry)
 
         assert result is True
 
@@ -98,9 +118,14 @@ class TestMiniMaxApiClientRuntimeData:
         config_entry = create_mock_minimax_config_entry(hass)
         mock_client = create_mock_minimax_client()
 
-        with patch(
-            "custom_components.minimax.MiniMaxApiClient",
-            return_value=mock_client,
+        with (
+            patch(
+                "custom_components.minimax.MiniMaxApiClient",
+                return_value=mock_client,
+            ),
+            patch.object(
+                hass.config_entries, "async_forward_entry_setups", return_value=True
+            ),
         ):
             await async_setup_entry(hass, config_entry)
 
@@ -108,15 +133,20 @@ class TestMiniMaxApiClientRuntimeData:
         assert config_entry.runtime_data is mock_client
 
     @pytest.mark.asyncio
-    async def test_client_accessible_from_hass_data(self, hass):
-        """Test that client is accessible via hass.data."""
+    async def test_client_accessible_from_runtime_data(self, hass):
+        """Test that client is accessible via runtime_data."""
         config_entry = create_mock_minimax_config_entry(hass)
         mock_client = create_mock_minimax_client()
 
-        with patch(
-            "custom_components.minimax.MiniMaxApiClient",
-            return_value=mock_client,
+        with (
+            patch(
+                "custom_components.minimax.MiniMaxApiClient",
+                return_value=mock_client,
+            ),
+            patch.object(
+                hass.config_entries, "async_forward_entry_setups", return_value=True
+            ),
         ):
             await async_setup_entry(hass, config_entry)
 
-        assert hass.data[DOMAIN][config_entry.entry_id] is mock_client
+        assert config_entry.runtime_data is mock_client

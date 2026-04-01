@@ -359,7 +359,7 @@ class MiniMaxConversationEntity(
             response_text = "Der opstod en fejl."
 
         response_text = re.sub(
-            r"<think>.*?\n",
+            r"<think>.*?</think>",
             "",
             response_text,
             flags=re.DOTALL,

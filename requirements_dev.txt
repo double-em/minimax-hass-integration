@@ -9,4 +9,4 @@ pylint-pytest
 pylint
 pytest-aiohttp
 pytest-asyncio
-types-aiohttp
+respx

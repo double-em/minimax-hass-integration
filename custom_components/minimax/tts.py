@@ -55,13 +55,6 @@ class MiniMaxTTSEntity(TextToSpeechEntity):
     _attr_supported_options = [ATTR_VOICE]
     _attr_supported_languages = list(VOICE_IDS.keys())
 
-    _supported_voices: list[Voice] = [
-        Voice(
-            voice_id=voice_id, name=voice_id.replace("_", " ").replace("-", " ").title()
-        )
-        for voice_id in VOICE_IDS.get("en-US", [])
-    ]
-
     def __init__(
         self,
         config_entry: ConfigEntry,
@@ -84,9 +77,17 @@ class MiniMaxTTSEntity(TextToSpeechEntity):
         }
 
     @callback
-    def async_get_supported_voices(self, language: str) -> list[Voice]:
+    def async_get_supported_voices(self, language: str) -> list[Voice] | None:
         """Return a list of supported voices for a language."""
-        return self._supported_voices
+        if language not in VOICE_IDS:
+            return None
+        return [
+            Voice(
+                voice_id=voice_id,
+                name=voice_id.replace("_", " ").replace("-", " ").title(),
+            )
+            for voice_id in VOICE_IDS.get(language, [])
+        ]
 
     async def async_get_tts_audio(
         self, message: str, language: str, options: dict[str, Any]
