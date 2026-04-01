@@ -41,7 +41,7 @@ class MiniMaxApiClient:
         self._anthropic = anthropic.AsyncAnthropic(
             api_key=api_key,
             base_url=MINIMAX_ANTHROPIC_API_URL.rsplit("/v1", 1)[0],
-            http_client=httpx.AsyncClient(timeout=async_timeout.timeout(TIMEOUT)),
+            http_client=httpx.AsyncClient(timeout=httpx.Timeout(TIMEOUT)),
         )
 
     async def async_chat(
@@ -77,6 +77,8 @@ class MiniMaxApiClient:
                             "input": block.input,
                         }
                     )
+                elif block.type == "thinking":
+                    pass
 
             return {
                 "success": True,
