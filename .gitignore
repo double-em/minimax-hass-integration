@@ -1,3 +1,43 @@
+# Environment and secrets
 .env
+.env.*
 
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+.venv313/
+.venv314/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+*.cover
+
+# Linting
+.ruff_cache/
+.mypy_cache/
+.pytype/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local development
+*.log
