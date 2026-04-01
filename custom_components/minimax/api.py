@@ -1,0 +1,195 @@
+"""MiniMax API client."""
+
+from __future__ import annotations
+
+import base64
+import logging
+from typing import Any, cast
+
+import anthropic
+import async_timeout
+from aiohttp import ClientSession
+
+from .const import (
+    MINIMAX_ANTHROPIC_API_URL,
+    MINIMAX_STT_API,
+    MINIMAX_TTS_API,
+)
+
+TIMEOUT = 30
+TTS_TIMEOUT = 60
+STT_TIMEOUT = 60
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class MiniMaxApiClientError(Exception):
+    """General MiniMaxApiClient error."""
+
+
+class MiniMaxApiClient:
+    """MiniMax API client."""
+
+    def __init__(
+        self,
+        api_key: str,
+        session: ClientSession,
+    ) -> None:
+        """Construct API client."""
+        self._api_key = api_key
+        self._session = session
+        self._anthropic = anthropic.Anthropic(
+            api_key=api_key,
+            base_url=MINIMAX_ANTHROPIC_API_URL.rsplit("/v1", 1)[0],
+            http_client=anthropic.DictableHttpxClient(
+                timeout=async_timeout.timeout(TIMEOUT)
+            ),
+        )
+
+    async def async_chat(
+        self,
+        model: str,
+        messages: list[dict[str, Any]],
+        system_prompt: str,
+        max_tokens: int = 1024,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Send chat request using Anthropic SDK."""
+        try:
+            response = self._anthropic.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                messages=messages,
+                tools=tools,
+            )
+
+            content_blocks = response.content
+            text_parts = []
+            tool_calls = []
+
+            for block in content_blocks:
+                if block.type == "text":
+                    text_parts.append(block.text)
+                elif block.type == "tool_use":
+                    tool_calls.append(
+                        {
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input,
+                        }
+                    )
+
+            return {
+                "success": True,
+                "text": "\n".join(text_parts) if text_parts else "",
+                "tool_calls": tool_calls,
+                "stop_reason": response.stop_reason,
+            }
+
+        except Exception as err:
+            _LOGGER.error("Anthropic API error: %s", err)
+            return {
+                "success": False,
+                "error": str(err),
+            }
+
+    async def async_tts(
+        self,
+        text: str,
+        voice_id: str,
+        speed: float,
+        vol: float,
+        pitch: int,
+        model: str,
+    ) -> bytes:
+        """Generate TTS audio using MiniMax API."""
+        try:
+            async with async_timeout.timeout(TTS_TIMEOUT):
+                response = await self._session.post(
+                    MINIMAX_TTS_API,
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": model,
+                        "text": text,
+                        "stream": False,
+                        "voice_setting": {
+                            "voice_id": voice_id,
+                            "speed": speed,
+                            "vol": vol,
+                            "pitch": pitch,
+                        },
+                    },
+                )
+                response.raise_for_status()
+                result = await response.json()
+
+                audio_hex = result.get("data", {}).get("audio", "")
+                if audio_hex:
+                    return bytes.fromhex(audio_hex)
+
+                _LOGGER.error("No audio data in TTS response")
+                raise MiniMaxApiClientError("No audio data in response")
+
+        except Exception as err:
+            _LOGGER.error("TTS API error: %s", err)
+            raise MiniMaxApiClientError(str(err)) from err
+
+    async def async_stt(
+        self,
+        audio_data: bytes,
+        model: str,
+        language: str,
+        prompt: str,
+        audio_format: str,
+    ) -> str:
+        """Transcribe audio using MiniMax STT API."""
+        try:
+            async with async_timeout.timeout(STT_TIMEOUT):
+                form_data = {
+                    "file": ("audio.wav", audio_data, f"audio/{audio_format}"),
+                    "model": (None, model),
+                    "language": (None, language),
+                    "prompt": (None, prompt),
+                }
+
+                response = await self._session.post(
+                    MINIMAX_STT_API,
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    data=form_data,
+                )
+                response.raise_for_status()
+                result = await response.json()
+
+                text = result.get("text", "")
+                if text:
+                    return text
+
+                _LOGGER.warning("STT returned empty text")
+                raise MiniMaxApiClientError("STT returned empty text")
+
+        except Exception as err:
+            _LOGGER.error("STT API error: %s", err)
+            raise MiniMaxApiClientError(str(err)) from err
+
+    async def async_verify_connection(self) -> bool:
+        """Verify API connection with a simple test call."""
+        result = await self.async_chat(
+            model="MiniMax-M2.7",
+            messages=[{"role": "user", "content": "Hi"}],
+            system_prompt="",
+            max_tokens=5,
+        )
+        if not result.get("success", False):
+            error = result.get("error", "")
+            if (
+                "401" in error
+                or "authentication" in error.lower()
+                or "api_key" in error.lower()
+            ):
+                raise MiniMaxApiClientError("Invalid API key")
+            raise MiniMaxApiClientError(f"Connection failed: {error}")
+        return True

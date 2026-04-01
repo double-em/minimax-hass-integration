@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
 from homeassistant.components.tts import (
     ATTR_VOICE,
     TextToSpeechEntity,
@@ -16,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .api import MiniMaxApiClient
 from .const import (
     CONF_PITCH,
     CONF_SPEED,
@@ -30,8 +30,6 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-MINIMAX_TTS_API = "https://api.minimax.io/v1/t2a_v2"
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -39,14 +37,14 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up TTS entities."""
-    _LOGGER.debug("Setting up TTS entities")
+    client = config_entry.runtime_data
+
     for subentry in config_entry.subentries.values():
         if subentry.subentry_type != "tts":
             continue
-        _LOGGER.debug("Adding TTS entity: %s", subentry.subentry_id)
 
         async_add_entities(
-            [MiniMaxTTSEntity(config_entry, subentry)],
+            [MiniMaxTTSEntity(config_entry, subentry, client)],
             config_subentry_id=subentry.subentry_id,
         )
 
@@ -64,10 +62,16 @@ class MiniMaxTTSEntity(TextToSpeechEntity):
         for voice_id in VOICE_IDS.get("en-US", [])
     ]
 
-    def __init__(self, config_entry: ConfigEntry, subentry: ConfigSubentry) -> None:
+    def __init__(
+        self,
+        config_entry: ConfigEntry,
+        subentry: ConfigSubentry,
+        client: MiniMaxApiClient,
+    ) -> None:
         """Initialize the TTS entity."""
         self.entry = config_entry
         self.subentry = subentry
+        self._client = client
         self._attr_name = subentry.title
         self._attr_unique_id = subentry.subentry_id
         self._attr_default_language = "en-US"
@@ -89,7 +93,6 @@ class MiniMaxTTSEntity(TextToSpeechEntity):
     ) -> TtsAudioType:
         """Load TTS audio from the engine."""
         _LOGGER.debug("TTS request: message='%s', language=%s", message[:50], language)
-        api_key = self.entry.runtime_data.get("api_key", "")
         voice_id = options.get(
             ATTR_VOICE, self.subentry.data.get(CONF_VOICE_ID, "English_PlayfulGirl")
         )
@@ -109,37 +112,16 @@ class MiniMaxTTSEntity(TextToSpeechEntity):
         )
 
         try:
-            _LOGGER.debug("Calling TTS API")
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                response = await client.post(
-                    MINIMAX_TTS_API,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": RECOMMENDED_TTS_MODEL,
-                        "text": message,
-                        "stream": False,
-                        "voice_setting": {
-                            "voice_id": voice_id,
-                            "speed": speed,
-                            "vol": vol,
-                            "pitch": int(pitch),
-                        },
-                    },
-                )
-                response.raise_for_status()
-                result = response.json()
-
-                audio_hex = result.get("data", {}).get("audio", "")
-                if audio_hex:
-                    audio_data = bytes.fromhex(audio_hex)
-                    _LOGGER.debug("TTS generated %d bytes of audio", len(audio_data))
-                    return ("mp3", audio_data)
-
-                _LOGGER.error("No audio data in TTS response")
-                return (None, None)
+            audio_data = await self._client.async_tts(
+                text=message,
+                voice_id=voice_id,
+                speed=speed,
+                vol=vol,
+                pitch=int(pitch),
+                model=RECOMMENDED_TTS_MODEL,
+            )
+            _LOGGER.debug("TTS generated %d bytes of audio", len(audio_data))
+            return ("mp3", audio_data)
 
         except Exception as err:
             _LOGGER.error("Error during TTS: %s", err)

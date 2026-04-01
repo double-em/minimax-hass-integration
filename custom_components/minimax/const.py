@@ -2,11 +2,23 @@
 
 import logging
 
+from homeassistant.const import Platform
+
 DOMAIN = "minimax"
 LOGGER = logging.getLogger(__package__)
 
 DEFAULT_TITLE = "MiniMax"
 DEFAULT_CONVERSATION_NAME = "MiniMax Conversation"
+
+PLATFORMS = (
+    Platform.CONVERSATION,
+    Platform.STT,
+    Platform.TTS,
+)
+
+MINIMAX_ANTHROPIC_API_URL = "https://api.minimax.io/anthropic/v1/messages"
+MINIMAX_TTS_API = "https://api.minimax.io/v1/t2a_v2"
+MINIMAX_STT_API = "https://api.minimax.io/v1/audio/transcription"
 DEFAULT_STT_NAME = "MiniMax STT"
 DEFAULT_TTS_NAME = "MiniMax TTS"
 
@@ -20,40 +32,24 @@ RECOMMENDED_CHAT_MODEL = "MiniMax-M2.7"
 RECOMMENDED_TTS_MODEL = "speech-2.8-hd"
 RECOMMENDED_STT_MODEL = "MiniMax-M2.7"
 
-ANTHROPIC_MODELS = {
-    "MiniMax-M2.7",
-    "MiniMax-M2.7-highspeed",
-    "MiniMax-M2.5",
-    "MiniMax-M2.5-highspeed",
-    "MiniMax-M2.1",
-    "MiniMax-M2.1-highspeed",
-    "MiniMax-M2",
-}
-
 CHAT_MODELS = [
-    {"label": "MiniMax-M2.7 (Recommended, Anthropic)", "value": "MiniMax-M2.7"},
+    {"label": "MiniMax-M2.7 (Recommended)", "value": "MiniMax-M2.7"},
     {
-        "label": "MiniMax-M2.7-highspeed (Fast, Anthropic)",
+        "label": "MiniMax-M2.7-highspeed (Fast)",
         "value": "MiniMax-M2.7-highspeed",
     },
-    {"label": "MiniMax-M2.5 (Anthropic)", "value": "MiniMax-M2.5"},
+    {"label": "MiniMax-M2.5", "value": "MiniMax-M2.5"},
     {
-        "label": "MiniMax-M2.5-highspeed (Fast, Anthropic)",
+        "label": "MiniMax-M2.5-highspeed (Fast)",
         "value": "MiniMax-M2.5-highspeed",
     },
-    {"label": "MiniMax-M2.1 (Anthropic)", "value": "MiniMax-M2.1"},
+    {"label": "MiniMax-M2.1", "value": "MiniMax-M2.1"},
     {
-        "label": "MiniMax-M2.1-highspeed (Fast, Anthropic)",
+        "label": "MiniMax-M2.1-highspeed (Fast)",
         "value": "MiniMax-M2.1-highspeed",
     },
-    {"label": "MiniMax-M2 (Anthropic)", "value": "MiniMax-M2"},
-    {"label": "M2-her (Standard API)", "value": "M2-her"},
+    {"label": "MiniMax-M2", "value": "MiniMax-M2"},
 ]
-
-
-def is_anthropic_model(model: str) -> bool:
-    """Check if model uses Anthropic API."""
-    return model in ANTHROPIC_MODELS
 
 
 CONF_SPEED = "speed"

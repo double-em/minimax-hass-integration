@@ -1,10 +1,13 @@
 {
   "domain": "minimax",
   "name": "MiniMax",
-  "version": "1.0.9",
+  "version": "1.0.0",
   "config_flow": true,
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "requirements": [],
+  "requirements": ["anthropic"],
+  "codeowners": ["@double-em"],
+  "documentation": "https://github.com/double-em/minimax-hass-integration",
+  "issue_tracker": "https://github.com/double-em/minimax-hass-integration/issues",
   "icon": "https://play-lh.googleusercontent.com/hsPVehKUDPBS1LiaAkitNSmZtVNjb5-zbnlhHuNid42l5RMWWVEEiHqF5vSawdNK6ro"
 }

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from typing import Any
-import httpx
 import voluptuous as vol
 
 _LOGGER = logging.getLogger(__name__)
@@ -19,6 +18,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -29,6 +29,7 @@ from homeassistant.helpers.selector import (
     TemplateSelector,
 )
 
+from .api import MiniMaxApiClient, MiniMaxApiClientError
 from .const import (
     CONF_API_KEY,
     CONF_CHAT_MODEL,
@@ -75,29 +76,13 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
     _LOGGER.debug("Validating API key")
     api_key = data[CONF_API_KEY]
 
-    def _validate() -> httpx.Response:
-        """Validate API key in thread."""
-        with httpx.Client(timeout=30.0) as client:
-            return client.post(
-                "https://api.minimax.io/v1/text/chatcompletion_v2",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": RECOMMENDED_CHAT_MODEL,
-                    "messages": [{"role": "user", "content": "Hi"}],
-                    "max_tokens": 5,
-                },
-            )
+    client = MiniMaxApiClient(
+        api_key=api_key,
+        session=async_get_clientsession(hass),
+    )
 
-    response = await hass.async_add_executor_job(_validate)
-    _LOGGER.debug("API response status: %s", response.status_code)
-    if response.status_code == 401:
-        raise InvalidAuthError("Invalid API key")
-    if response.status_code != 200:
-        raise CannotConnectError(f"API error: {response.status_code}")
-    _LOGGER.debug("API key validation successful")
+    if not await client.async_verify_connection():
+        raise CannotConnectError("Failed to connect to MiniMax API")
 
 
 class MiniMaxConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -122,6 +107,14 @@ class MiniMaxConfigFlow(ConfigFlow, domain=DOMAIN):
             except CannotConnectError as e:
                 _LOGGER.warning("Cannot connect during config flow: %s", e)
                 errors["base"] = "cannot_connect"
+            except MiniMaxApiClientError as e:
+                err_str = str(e).lower()
+                if "invalid api key" in err_str or "401" in err_str:
+                    _LOGGER.warning("Invalid auth during config flow: %s", e)
+                    errors["base"] = "invalid_auth"
+                else:
+                    _LOGGER.warning("Cannot connect during config flow: %s", e)
+                    errors["base"] = "cannot_connect"
             except Exception as e:
                 _LOGGER.error("Unknown error during config flow: %s", e)
                 errors["base"] = "unknown"

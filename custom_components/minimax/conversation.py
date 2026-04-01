@@ -1,13 +1,11 @@
-"""Conversation support for MiniMax using Anthropic API or Standard API."""
+"""Conversation support for MiniMax."""
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from typing import Any, Literal
 
-import httpx
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.const import MATCH_ALL
@@ -15,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import intent
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .api import MiniMaxApiClient
 from .const import (
     CONF_CHAT_MODEL,
     CONF_CONVERSATION_TTS_ENABLED,
@@ -22,13 +21,10 @@ from .const import (
     DOMAIN,
     LOGGER,
     RECOMMENDED_CHAT_MODEL,
-    is_anthropic_model,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-MINIMAX_STANDARD_API = "https://api.minimax.io/v1/text/chatcompletion_v2"
-MINIMAX_DAEMON_URL = "http://localhost:8124/chat"
 MAX_TOOL_CALLS = 10
 
 
@@ -177,12 +173,14 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up conversation entities."""
+    client = config_entry.runtime_data
+
     for subentry in config_entry.subentries.values():
         if subentry.subentry_type != "conversation":
             continue
 
         async_add_entities(
-            [MiniMaxConversationEntity(config_entry, subentry)],
+            [MiniMaxConversationEntity(config_entry, subentry, client)],
             config_subentry_id=subentry.subentry_id,
         )
 
@@ -195,10 +193,13 @@ class MiniMaxConversationEntity(
 
     _attr_supported_features = conversation.ConversationEntityFeature.CONTROL
 
-    def __init__(self, entry: ConfigEntry, subentry: ConfigSubentry) -> None:
+    def __init__(
+        self, entry: ConfigEntry, subentry: ConfigSubentry, client: MiniMaxApiClient
+    ) -> None:
         """Initialize the agent."""
         self.entry = entry
         self.subentry = subentry
+        self._client = client
         self._attr_name = subentry.title
         self._attr_unique_id = subentry.subentry_id
         self._tts_enabled = subentry.data.get(CONF_CONVERSATION_TTS_ENABLED, True)
@@ -208,10 +209,6 @@ class MiniMaxConversationEntity(
     def supported_languages(self) -> list[str] | Literal["*"]:
         """Return a list of supported languages."""
         return MATCH_ALL
-
-    def _get_api_key(self) -> str:
-        """Get API key from config entry."""
-        return self.entry.runtime_data.get("api_key", "")
 
     async def async_added_to_hass(self) -> None:
         """When entity is added to Home Assistant."""
@@ -270,136 +267,67 @@ class MiniMaxConversationEntity(
 
         return results
 
-    async def _chat_anthropic(
+    async def _chat_with_api(
         self,
         system_prompt: str,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
         model: str,
     ) -> tuple[str, list[dict[str, Any]]]:
-        """Send chat request to local Anthropic daemon."""
+        """Send chat request to MiniMax API via Anthropic SDK."""
 
-        def _call_daemon() -> dict[str, Any]:
-            """Call local daemon via HTTP."""
-            with httpx.Client(timeout=60.0) as client:
-                response = client.post(
-                    MINIMAX_DAEMON_URL,
-                    json={
-                        "model": model,
-                        "system_prompt": system_prompt,
-                        "messages": messages,
-                        "tools": tools,
-                    },
-                )
-                response.raise_for_status()
-                return response.json()
-
-        try:
-            result = await self.hass.async_add_executor_job(_call_daemon)
-            _LOGGER.debug("Daemon response: %s", result)
-
-            if not result.get("success", False):
-                error = result.get("error", "Unknown error")
-                raise Exception(f"Daemon error: {error}")
-
-            content_blocks = result.get("content", [])
-            has_tool_use = result.get("tool_calls", [])
-
-            if has_tool_use:
-                tool_calls = []
-                text_parts = []
-
-                for block in content_blocks:
-                    if block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
-
-                for tc in result.get("tool_calls", []):
-                    tool_calls.append(
-                        {
-                            "id": tc.get("id", ""),
-                            "name": tc.get("name", ""),
-                            "input": tc.get("input", {}),
-                        }
-                    )
-
-                if tool_calls:
-                    _LOGGER.debug("Tool calls returned: %d", len(tool_calls))
-                    tool_results = await self._execute_tool_calls(tool_calls, messages)
-
-                    messages.append(
-                        {
-                            "role": "assistant",
-                            "content": content_blocks,
-                        }
-                    )
-
-                    for result_item in tool_results:
-                        messages.append({"role": "user", "content": [result_item]})
-
-                    return await self._chat_anthropic(
-                        system_prompt, messages, tools, model
-                    )
-
-                text = "\n".join(text_parts) if text_parts else ""
-                return text, messages
-            else:
-                text = result.get("text", "")
-                return text, messages
-
-        except Exception as err:
-            _LOGGER.error("Anthropic daemon error: %s", err)
-            raise
-
-    async def _chat_standard(
-        self,
-        system_prompt: str,
-        messages: list[dict[str, Any]],
-        model: str,
-    ) -> tuple[str, list[dict[str, Any]]]:
-        """Send chat request using Standard OpenAI-compatible API (M2-her)."""
-        api_key = self.entry.runtime_data.get("api_key", "")
-
-        formatted_messages = []
-        formatted_messages.append(
-            {
-                "role": "system",
-                "name": "AI Assistant",
-                "content": system_prompt,
-            }
+        result = await self._client.async_chat(
+            model=model,
+            messages=messages,
+            system_prompt=system_prompt,
+            tools=tools if tools else None,
         )
-        for msg in messages:
-            formatted_messages.append(msg)
 
-        def _call_api() -> dict[str, Any]:
-            """Call API in thread to avoid blocking."""
-            with httpx.Client(timeout=60.0) as client:
-                response = client.post(
-                    MINIMAX_STANDARD_API,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "messages": formatted_messages,
-                        "temperature": 1.0,
-                        "top_p": 0.95,
-                        "max_completion_tokens": 2048,
-                    },
+        if not result.get("success", False):
+            error = result.get("error", "Unknown error")
+            raise Exception(f"API error: {error}")
+
+        content_blocks = result.get("content", [])
+        has_tool_use = result.get("tool_calls", [])
+
+        if has_tool_use:
+            tool_calls = []
+            text_parts = []
+
+            for block in content_blocks:
+                if block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+
+            for tc in result.get("tool_calls", []):
+                tool_calls.append(
+                    {
+                        "id": tc.get("id", ""),
+                        "name": tc.get("name", ""),
+                        "input": tc.get("input", {}),
+                    }
                 )
-                response.raise_for_status()
-                return response.json()
 
-        try:
-            result = await self.hass.async_add_executor_job(_call_api)
-            _LOGGER.debug("Standard API response keys: %s", list(result.keys()))
+            if tool_calls:
+                _LOGGER.debug("Tool calls returned: %d", len(tool_calls))
+                tool_results = await self._execute_tool_calls(tool_calls, messages)
 
-            assistant_message = result["choices"][0]["message"]
-            return assistant_message.get("content", ""), [assistant_message]
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": content_blocks,
+                    }
+                )
 
-        except Exception as err:
-            _LOGGER.error("Standard API error: %s", err)
-            raise
+                for result_item in tool_results:
+                    messages.append({"role": "user", "content": [result_item]})
+
+                return await self._chat_with_api(system_prompt, messages, tools, model)
+
+            text = "\n".join(text_parts) if text_parts else ""
+            return text, messages
+        else:
+            text = result.get("text", "")
+            return text, messages
 
     async def async_process(
         self, user_input: conversation.ConversationInput
@@ -413,43 +341,28 @@ class MiniMaxConversationEntity(
         system_prompt = _build_system_prompt(user_prompt, self.hass, DOMAIN)
         model = self.subentry.data.get(CONF_CHAT_MODEL, RECOMMENDED_CHAT_MODEL)
 
-        use_anthropic = is_anthropic_model(model)
-
         messages = [
             {
                 "role": "user",
-                "content": [{"type": "text", "text": user_input.text}]
-                if use_anthropic
-                else user_input.text,
+                "content": [{"type": "text", "text": user_input.text}],
             }
         ]
 
-        if use_anthropic:
-            tools = self._get_tools()
-            _LOGGER.debug(
-                "Using Anthropic API with model: %s, tools: %d", model, len(tools)
+        tools = self._get_tools()
+        _LOGGER.debug("Using MiniMax API with model: %s, tools: %d", model, len(tools))
+        try:
+            response_text, _ = await self._chat_with_api(
+                system_prompt, messages, tools, model
             )
-            try:
-                response_text, _ = await self._chat_anthropic(
-                    system_prompt, messages, tools, model
-                )
-            except Exception as err:
-                _LOGGER.error("Conversation error: %s", err)
-                response_text = "Beklager, der opstod en fejl."
-        else:
-            _LOGGER.debug("Using Standard API with model: %s (no tools)", model)
-            try:
-                response_text, _ = await self._chat_standard(
-                    system_prompt, messages, model
-                )
-            except Exception as err:
-                _LOGGER.error("Conversation error: %s", err)
-                response_text = "Beklager, der opstod en fejl."
+        except Exception as err:
+            _LOGGER.error("Conversation error: %s", err)
+            response_text = "Der opstod en fejl."
 
         response_text = re.sub(
-            re.compile(r"<think>.*?</think>", re.DOTALL),
+            r"<think>.*?\n",
             "",
             response_text,
+            flags=re.DOTALL,
         )
         response_text = response_text.strip()
 
