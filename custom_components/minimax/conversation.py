@@ -128,19 +128,16 @@ def _get_homeassistant_tools(hass: HomeAssistant) -> list[dict[str, Any]]:
                 }
 
             tool = {
-                "type": "function",
-                "function": {
-                    "name": tool_name,
-                    "description": description,
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties,
-                    },
+                "name": tool_name,
+                "description": description,
+                "input_schema": {
+                    "type": "object",
+                    "properties": properties,
                 },
             }
 
             if required:
-                tool["function"]["parameters"]["required"] = required
+                tool["input_schema"]["required"] = required
 
             tools.append(tool)
 
