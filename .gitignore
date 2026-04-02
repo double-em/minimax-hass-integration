@@ -2,6 +2,8 @@
 .env
 .env.*
 
+minimax_hass_integration/
+
 # Python
 __pycache__/
 *.py[cod]
