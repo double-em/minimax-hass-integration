@@ -33,6 +33,8 @@ from .api import MiniMaxApiClient, MiniMaxApiClientError
 from .const import (
     CONF_API_KEY,
     CONF_CHAT_MODEL,
+    CONF_CONVERSATION_EXPIRY_MINUTES,
+    CONF_CONVERSATION_MAX_TOKENS,
     CONF_CONVERSATION_TTS_ENABLED,
     CONF_PITCH,
     CONF_PROMPT,
@@ -40,6 +42,8 @@ from .const import (
     CONF_SPEED,
     CONF_VOICE_ID,
     CONF_VOL,
+    DEFAULT_CONVERSATION_EXPIRY_MINUTES,
+    DEFAULT_CONVERSATION_MAX_TOKENS,
     DEFAULT_CONVERSATION_NAME,
     DEFAULT_CONVERSATION_TTS_ENABLED,
     DEFAULT_PITCH,
@@ -279,6 +283,29 @@ def async_minimax_option_schema(
                         CONF_CONVERSATION_TTS_ENABLED, DEFAULT_CONVERSATION_TTS_ENABLED
                     ),
                 ): BooleanSelector(),
+                vol.Optional(
+                    CONF_CONVERSATION_MAX_TOKENS,
+                    default=options.get(
+                        CONF_CONVERSATION_MAX_TOKENS, DEFAULT_CONVERSATION_MAX_TOKENS
+                    ),
+                ): NumberSelector(NumberSelectorConfig(min=1000, max=32000, step=1000)),
+                vol.Optional(
+                    CONF_CONVERSATION_EXPIRY_MINUTES,
+                    default=options.get(
+                        CONF_CONVERSATION_EXPIRY_MINUTES,
+                        DEFAULT_CONVERSATION_EXPIRY_MINUTES,
+                    ),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        mode=SelectSelectorMode.DROPDOWN,
+                        options=[
+                            {"label": "5 minutes", "value": 5},
+                            {"label": "15 minutes", "value": 15},
+                            {"label": "30 minutes", "value": 30},
+                            {"label": "1 hour", "value": 60},
+                        ],
+                    )
+                ),
             }
         )
     elif subentry_type == "tts":

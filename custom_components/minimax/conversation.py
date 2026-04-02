@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import re
+import time
+import uuid
 from typing import Any, Literal
 
 from homeassistant.components import conversation
@@ -16,12 +18,18 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from .api import MiniMaxApiClient
 from .const import (
     CONF_CHAT_MODEL,
+    CONF_CONVERSATION_EXPIRY_MINUTES,
+    CONF_CONVERSATION_MAX_TOKENS,
     CONF_CONVERSATION_TTS_ENABLED,
     CONF_PROMPT,
+    DEFAULT_CONVERSATION_EXPIRY_MINUTES,
+    DEFAULT_CONVERSATION_MAX_TOKENS,
     DOMAIN,
     LOGGER,
     RECOMMENDED_CHAT_MODEL,
 )
+
+_CHARS_PER_TOKEN = 4
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -145,6 +153,50 @@ def _get_homeassistant_tools(hass: HomeAssistant) -> list[dict[str, Any]]:
     return tools
 
 
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count for text."""
+    return len(text) // _CHARS_PER_TOKEN
+
+
+def _trim_conversation_history(
+    messages: list[dict[str, Any]], max_tokens: int
+) -> list[dict[str, Any]]:
+    """Trim conversation history to fit within token limit."""
+    if not messages:
+        return messages
+
+    total_tokens = 0
+    for msg in messages:
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    total_tokens += _estimate_tokens(item.get("text", ""))
+        else:
+            total_tokens += _estimate_tokens(str(content))
+
+    if total_tokens <= max_tokens:
+        return messages
+
+    trimmed = []
+    for msg in reversed(messages):
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    token_count = _estimate_tokens(item.get("text", ""))
+        else:
+            token_count = _estimate_tokens(str(content))
+
+        if total_tokens - token_count > max_tokens and len(trimmed) > 1:
+            total_tokens -= token_count
+        else:
+            trimmed.insert(0, msg)
+            break
+
+    return trimmed
+
+
 async def _call_service(
     hass: HomeAssistant, domain: str, service: str, data: dict[str, Any]
 ) -> dict[str, Any]:
@@ -200,6 +252,13 @@ class MiniMaxConversationEntity(
         self._attr_name = subentry.title
         self._attr_unique_id = subentry.subentry_id
         self._tts_enabled = subentry.data.get(CONF_CONVERSATION_TTS_ENABLED, True)
+        self._max_tokens = subentry.data.get(
+            CONF_CONVERSATION_MAX_TOKENS, DEFAULT_CONVERSATION_MAX_TOKENS
+        )
+        self._expiry_minutes = subentry.data.get(
+            CONF_CONVERSATION_EXPIRY_MINUTES, DEFAULT_CONVERSATION_EXPIRY_MINUTES
+        )
+        self._conversation_history: dict[str, tuple[list[dict[str, Any]], float]] = {}
         self._tools: list[dict[str, Any]] | None = None
 
     @property
@@ -326,14 +385,93 @@ class MiniMaxConversationEntity(
             text = result.get("text", "")
             return text, messages
 
+    def _cleanup_expired_conversations(self) -> None:
+        """Remove expired conversations from history."""
+        if not self._expiry_minutes:
+            return
+        now = time.time()
+        expiry_seconds = self._expiry_minutes * 60
+        expired = [
+            cid
+            for cid, (_, timestamp) in self._conversation_history.items()
+            if now - timestamp > expiry_seconds
+        ]
+        for cid in expired:
+            del self._conversation_history[cid]
+        if expired:
+            _LOGGER.debug("Cleaned up %d expired conversations", len(expired))
+
     async def async_process(
         self, user_input: conversation.ConversationInput
     ) -> conversation.ConversationResult:
         """Process a conversation message."""
         _LOGGER.debug("Processing conversation input: %s", user_input.text)
+
+        self._cleanup_expired_conversations()
+
+        conversation_id = user_input.conversation_id
+        if not conversation_id:
+            conversation_id = str(uuid.uuid4())
+            _LOGGER.debug("New conversation, generated ID: %s", conversation_id)
+
+        existing_history, _ = self._conversation_history.get(conversation_id, ([], 0.0))
+        trimmed_history = _trim_conversation_history(
+            list(existing_history), self._max_tokens
+        )
+
         user_prompt = self.subentry.data.get(
             CONF_PROMPT,
             "You are EVA, a friendly AI home assistant. Be helpful and concise.",
+        )
+        system_prompt = _build_system_prompt(user_prompt, self.hass, DOMAIN)
+        model = self.subentry.data.get(CONF_CHAT_MODEL, RECOMMENDED_CHAT_MODEL)
+
+        user_message = {
+            "role": "user",
+            "content": [{"type": "text", "text": user_input.text}],
+        }
+
+        messages = [user_message]
+
+        tools = self._get_tools()
+        _LOGGER.debug(
+            "Using MiniMax API with model: %s, tools: %d, history length: %d",
+            model,
+            len(tools),
+            len(trimmed_history),
+        )
+        try:
+            response_text, _ = await self._chat_with_api(
+                system_prompt, trimmed_history + messages, tools, model
+            )
+
+            assistant_message = {
+                "role": "assistant",
+                "content": response_text,
+            }
+            new_history = trimmed_history + [user_message, assistant_message]
+            self._conversation_history[conversation_id] = (new_history, time.time())
+        except Exception as err:
+            _LOGGER.error("Conversation error: %s", err)
+            response_text = "Sorry, I had trouble answering that."
+
+        response_text = re.sub(
+            r"<think>.*?</think>",
+            "",
+            response_text,
+            flags=re.DOTALL,
+        )
+        response_text = response_text.strip()
+
+        if not response_text:
+            response_text = "Beklager, jeg kunne ikke få svar."
+
+        intent_response = intent.IntentResponse(language=user_input.language)
+        intent_response.async_set_speech(response_text)
+
+        return conversation.ConversationResult(
+            response=intent_response,
+            conversation_id=conversation_id,
         )
         system_prompt = _build_system_prompt(user_prompt, self.hass, DOMAIN)
         model = self.subentry.data.get(CONF_CHAT_MODEL, RECOMMENDED_CHAT_MODEL)

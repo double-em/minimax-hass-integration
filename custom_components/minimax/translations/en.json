@@ -44,12 +44,16 @@
             "chat_model": "Model",
             "prompt": "Prompt",
             "conversation_tts_enabled": "Conversation TTS Enabled",
+            "conversation_max_tokens": "Max History Tokens",
+            "conversation_expiry_minutes": "History Expires After",
             "recommended": "Use Recommended Settings"
           },
           "data_description": {
             "chat_model": "Select the AI model for conversation",
             "prompt": "Instruct how the AI assistant should respond to voice commands.",
-            "conversation_tts_enabled": "Enable text-to-speech for conversation responses"
+            "conversation_tts_enabled": "Enable text-to-speech for conversation responses",
+            "conversation_max_tokens": "Maximum token limit for conversation history (~4 characters per token)",
+            "conversation_expiry_minutes": "How long to keep conversation history before it expires"
           }
         }
       }
