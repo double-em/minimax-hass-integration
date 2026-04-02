@@ -29,11 +29,10 @@ from .const import (
     RECOMMENDED_CHAT_MODEL,
 )
 
-_CHARS_PER_TOKEN = 4
-
 _LOGGER = logging.getLogger(__name__)
 
 MAX_TOOL_CALLS = 10
+_CHARS_PER_TOKEN = 4
 
 
 def _get_exposed_entities(hass: HomeAssistant, assistant: str) -> dict[str, Any]:
@@ -165,34 +164,31 @@ def _trim_conversation_history(
     if not messages:
         return messages
 
-    total_tokens = 0
+    msg_tokens: list[tuple[dict[str, Any], int]] = []
     for msg in messages:
         content = msg.get("content", "")
         if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    total_tokens += _estimate_tokens(item.get("text", ""))
+            text = "".join(
+                item.get("text", "")
+                for item in content
+                if isinstance(item, dict) and item.get("type") == "text"
+            )
         else:
-            total_tokens += _estimate_tokens(str(content))
+            text = str(content)
+        token_count = _estimate_tokens(text)
+        msg_tokens.append((msg, token_count))
 
+    total_tokens = sum(t for _, t in msg_tokens)
     if total_tokens <= max_tokens:
         return messages
 
     trimmed = []
-    for msg in reversed(messages):
-        content = msg.get("content", "")
-        if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    token_count = _estimate_tokens(item.get("text", ""))
-        else:
-            token_count = _estimate_tokens(str(content))
-
-        if total_tokens - token_count > max_tokens and len(trimmed) > 1:
-            total_tokens -= token_count
-        else:
-            trimmed.insert(0, msg)
+    accumulated = 0
+    for msg, token_count in msg_tokens:
+        if accumulated + token_count > max_tokens and trimmed:
             break
+        trimmed.append(msg)
+        accumulated += token_count
 
     return trimmed
 
@@ -472,42 +468,4 @@ class MiniMaxConversationEntity(
         return conversation.ConversationResult(
             response=intent_response,
             conversation_id=conversation_id,
-        )
-        system_prompt = _build_system_prompt(user_prompt, self.hass, DOMAIN)
-        model = self.subentry.data.get(CONF_CHAT_MODEL, RECOMMENDED_CHAT_MODEL)
-
-        messages = [
-            {
-                "role": "user",
-                "content": [{"type": "text", "text": user_input.text}],
-            }
-        ]
-
-        tools = self._get_tools()
-        _LOGGER.debug("Using MiniMax API with model: %s, tools: %d", model, len(tools))
-        try:
-            response_text, _ = await self._chat_with_api(
-                system_prompt, messages, tools, model
-            )
-        except Exception as err:
-            _LOGGER.error("Conversation error: %s", err)
-            response_text = "Der opstod en fejl."
-
-        response_text = re.sub(
-            r"<think>.*?</think>",
-            "",
-            response_text,
-            flags=re.DOTALL,
-        )
-        response_text = response_text.strip()
-
-        if not response_text:
-            response_text = "Beklager, jeg kunne ikke få svar."
-
-        intent_response = intent.IntentResponse(language=user_input.language)
-        intent_response.async_set_speech(response_text)
-
-        return conversation.ConversationResult(
-            response=intent_response,
-            conversation_id=user_input.conversation_id,
         )
