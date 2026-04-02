@@ -21,9 +21,12 @@ from .const import (
     CONF_CONVERSATION_EXPIRY_MINUTES,
     CONF_CONVERSATION_MAX_TOKENS,
     CONF_CONVERSATION_TTS_ENABLED,
+    CONF_MAX_CONVERSATIONS,
     CONF_PROMPT,
     DEFAULT_CONVERSATION_EXPIRY_MINUTES,
     DEFAULT_CONVERSATION_MAX_TOKENS,
+    DEFAULT_MAX_CONVERSATIONS,
+    DEFAULT_MIN_MAX_TOKENS,
     DOMAIN,
     LOGGER,
     RECOMMENDED_CHAT_MODEL,
@@ -248,11 +251,17 @@ class MiniMaxConversationEntity(
         self._attr_name = subentry.title
         self._attr_unique_id = subentry.subentry_id
         self._tts_enabled = subentry.data.get(CONF_CONVERSATION_TTS_ENABLED, True)
-        self._max_tokens = subentry.data.get(
-            CONF_CONVERSATION_MAX_TOKENS, DEFAULT_CONVERSATION_MAX_TOKENS
+        self._max_tokens = max(
+            subentry.data.get(
+                CONF_CONVERSATION_MAX_TOKENS, DEFAULT_CONVERSATION_MAX_TOKENS
+            ),
+            DEFAULT_MIN_MAX_TOKENS,
         )
         self._expiry_minutes = subentry.data.get(
             CONF_CONVERSATION_EXPIRY_MINUTES, DEFAULT_CONVERSATION_EXPIRY_MINUTES
+        )
+        self._max_conversations = subentry.data.get(
+            CONF_MAX_CONVERSATIONS, DEFAULT_MAX_CONVERSATIONS
         )
         self._conversation_history: dict[str, tuple[list[dict[str, Any]], float]] = {}
         self._tools: list[dict[str, Any]] | None = None
@@ -382,20 +391,32 @@ class MiniMaxConversationEntity(
             return text, messages
 
     def _cleanup_expired_conversations(self) -> None:
-        """Remove expired conversations from history."""
-        if not self._expiry_minutes:
-            return
-        now = time.time()
-        expiry_seconds = self._expiry_minutes * 60
-        expired = [
-            cid
-            for cid, (_, timestamp) in self._conversation_history.items()
-            if now - timestamp > expiry_seconds
-        ]
-        for cid in expired:
-            del self._conversation_history[cid]
-        if expired:
-            _LOGGER.debug("Cleaned up %d expired conversations", len(expired))
+        """Remove expired or oldest conversations to enforce limits."""
+        cleaned = 0
+
+        if self._expiry_minutes:
+            now = time.time()
+            expiry_seconds = self._expiry_minutes * 60
+            expired = [
+                cid
+                for cid, (_, timestamp) in self._conversation_history.items()
+                if now - timestamp > expiry_seconds
+            ]
+            for cid in expired:
+                del self._conversation_history[cid]
+                cleaned += 1
+
+        if len(self._conversation_history) > self._max_conversations:
+            sorted_convs = sorted(
+                self._conversation_history.items(), key=lambda x: x[1][1]
+            )
+            excess = len(self._conversation_history) - self._max_conversations
+            for cid, _ in sorted_convs[:excess]:
+                del self._conversation_history[cid]
+                cleaned += 1
+
+        if cleaned:
+            _LOGGER.debug("Cleaned up %d conversations", cleaned)
 
     async def async_process(
         self, user_input: conversation.ConversationInput
@@ -441,12 +462,14 @@ class MiniMaxConversationEntity(
                 system_prompt, trimmed_history + messages, tools, model
             )
 
-            assistant_message = {
-                "role": "assistant",
-                "content": response_text,
-            }
-            new_history = trimmed_history + [user_message, assistant_message]
-            self._conversation_history[conversation_id] = (new_history, time.time())
+            user_content = user_input.text.strip() if user_input.text else ""
+            if user_content:
+                assistant_message = {
+                    "role": "assistant",
+                    "content": response_text,
+                }
+                new_history = trimmed_history + [user_message, assistant_message]
+                self._conversation_history[conversation_id] = (new_history, time.time())
         except Exception as err:
             _LOGGER.error("Conversation error: %s", err)
             response_text = "Sorry, I had trouble answering that."
