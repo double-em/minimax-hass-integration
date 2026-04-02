@@ -393,6 +393,7 @@ class MiniMaxConversationEntity(
     def _cleanup_expired_conversations(self) -> None:
         """Remove expired or oldest conversations to enforce limits."""
         cleaned = 0
+        history_size = len(self._conversation_history)
 
         if self._expiry_minutes:
             now = time.time()
@@ -415,14 +416,30 @@ class MiniMaxConversationEntity(
                 del self._conversation_history[cid]
                 cleaned += 1
 
-        if cleaned:
-            _LOGGER.debug("Cleaned up %d conversations", cleaned)
+        if cleaned or history_size > 0:
+            _LOGGER.debug(
+                "Conversation history: %d conversations, cleaned %d",
+                history_size,
+                cleaned,
+            )
 
     async def async_process(
         self, user_input: conversation.ConversationInput
     ) -> conversation.ConversationResult:
         """Process a conversation message."""
-        _LOGGER.debug("Processing conversation input: %s", user_input.text)
+        user_content = user_input.text.strip() if user_input.text else ""
+        _LOGGER.debug(
+            "Processing conversation input (length=%d)",
+            len(user_content),
+        )
+
+        if not user_content:
+            intent_response = intent.IntentResponse(language=user_input.language)
+            intent_response.async_set_speech("Please say something.")
+            return conversation.ConversationResult(
+                response=intent_response,
+                conversation_id=user_input.conversation_id or "",
+            )
 
         self._cleanup_expired_conversations()
 
@@ -462,14 +479,12 @@ class MiniMaxConversationEntity(
                 system_prompt, trimmed_history + messages, tools, model
             )
 
-            user_content = user_input.text.strip() if user_input.text else ""
-            if user_content:
-                assistant_message = {
-                    "role": "assistant",
-                    "content": response_text,
-                }
-                new_history = trimmed_history + [user_message, assistant_message]
-                self._conversation_history[conversation_id] = (new_history, time.time())
+            assistant_message = {
+                "role": "assistant",
+                "content": response_text,
+            }
+            new_history = trimmed_history + [user_message, assistant_message]
+            self._conversation_history[conversation_id] = (new_history, time.time())
         except Exception as err:
             _LOGGER.error("Conversation error: %s", err)
             response_text = "Sorry, I had trouble answering that."
