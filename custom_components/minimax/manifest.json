@@ -1,7 +1,7 @@
 {
   "domain": "minimax",
   "name": "MiniMax",
-  "version": "1.1.9",
+  "version": "1.1.10",
   "config_flow": true,
   "integration_type": "service",
   "iot_class": "cloud_polling",
