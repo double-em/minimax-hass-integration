@@ -46,6 +46,9 @@
             "conversation_tts_enabled": "Conversation TTS Enabled",
             "conversation_max_tokens": "Max History Tokens",
             "conversation_expiry_minutes": "History Expires After",
+            "memory_enabled": "Enable Memory",
+            "memory_max_count": "Max Memories",
+            "memory_expiry_days": "Memory Expiry Days",
             "recommended": "Use Recommended Settings"
           },
           "data_description": {
@@ -53,7 +56,10 @@
             "prompt": "Instruct how the AI assistant should respond to voice commands.",
             "conversation_tts_enabled": "Enable text-to-speech for conversation responses",
             "conversation_max_tokens": "Maximum token limit for conversation history (~4 characters per token)",
-            "conversation_expiry_minutes": "How long to keep conversation history before it expires"
+            "conversation_expiry_minutes": "How long to keep conversation history before it expires",
+            "memory_enabled": "Enable persistent memory so the agent can remember user preferences across conversations",
+            "memory_max_count": "Maximum number of memories to store (10-100)",
+            "memory_expiry_days": "Days before unused memories expire (0=never)"
           }
         }
       }

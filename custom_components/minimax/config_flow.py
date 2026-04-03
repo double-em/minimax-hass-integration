@@ -36,6 +36,9 @@ from .const import (
     CONF_CONVERSATION_EXPIRY_MINUTES,
     CONF_CONVERSATION_MAX_TOKENS,
     CONF_CONVERSATION_TTS_ENABLED,
+    CONF_MEMORY_ENABLED,
+    CONF_MEMORY_EXPIRY_DAYS,
+    CONF_MEMORY_MAX_COUNT,
     CONF_PITCH,
     CONF_PROMPT,
     CONF_RECOMMENDED,
@@ -46,6 +49,9 @@ from .const import (
     DEFAULT_CONVERSATION_MAX_TOKENS,
     DEFAULT_CONVERSATION_NAME,
     DEFAULT_CONVERSATION_TTS_ENABLED,
+    DEFAULT_MEMORY_ENABLED,
+    DEFAULT_MEMORY_EXPIRY_DAYS,
+    DEFAULT_MEMORY_MAX_COUNT,
     DEFAULT_PITCH,
     DEFAULT_SPEED,
     DEFAULT_TITLE,
@@ -315,6 +321,22 @@ def async_minimax_option_schema(
                         ],
                     )
                 ),
+                vol.Optional(
+                    CONF_MEMORY_ENABLED,
+                    default=options.get(CONF_MEMORY_ENABLED, DEFAULT_MEMORY_ENABLED),
+                ): BooleanSelector(),
+                vol.Optional(
+                    CONF_MEMORY_MAX_COUNT,
+                    default=options.get(
+                        CONF_MEMORY_MAX_COUNT, DEFAULT_MEMORY_MAX_COUNT
+                    ),
+                ): NumberSelector(NumberSelectorConfig(min=10, max=100, step=10)),
+                vol.Optional(
+                    CONF_MEMORY_EXPIRY_DAYS,
+                    default=options.get(
+                        CONF_MEMORY_EXPIRY_DAYS, DEFAULT_MEMORY_EXPIRY_DAYS
+                    ),
+                ): NumberSelector(NumberSelectorConfig(min=0, max=365, step=30)),
             }
         )
     elif subentry_type == "tts":

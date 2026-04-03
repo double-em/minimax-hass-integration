@@ -22,15 +22,22 @@ from .const import (
     CONF_CONVERSATION_MAX_TOKENS,
     CONF_CONVERSATION_TTS_ENABLED,
     CONF_MAX_CONVERSATIONS,
+    CONF_MEMORY_ENABLED,
+    CONF_MEMORY_EXPIRY_DAYS,
+    CONF_MEMORY_MAX_COUNT,
     CONF_PROMPT,
     DEFAULT_CONVERSATION_EXPIRY_MINUTES,
     DEFAULT_CONVERSATION_MAX_TOKENS,
     DEFAULT_MAX_CONVERSATIONS,
+    DEFAULT_MEMORY_ENABLED,
+    DEFAULT_MEMORY_EXPIRY_DAYS,
+    DEFAULT_MEMORY_MAX_COUNT,
     DEFAULT_MIN_MAX_TOKENS,
     DOMAIN,
     LOGGER,
     RECOMMENDED_CHAT_MODEL,
 )
+from .memory import MemoryStore
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -263,6 +270,18 @@ class MiniMaxConversationEntity(
         self._max_conversations = subentry.data.get(
             CONF_MAX_CONVERSATIONS, DEFAULT_MAX_CONVERSATIONS
         )
+        self._memory_enabled = subentry.data.get(
+            CONF_MEMORY_ENABLED, DEFAULT_MEMORY_ENABLED
+        )
+        self._memory_store = MemoryStore(
+            entry_id=entry.entry_id,
+            max_count=subentry.data.get(
+                CONF_MEMORY_MAX_COUNT, DEFAULT_MEMORY_MAX_COUNT
+            ),
+            expiry_days=subentry.data.get(
+                CONF_MEMORY_EXPIRY_DAYS, DEFAULT_MEMORY_EXPIRY_DAYS
+            ),
+        )
         self._conversation_history: dict[str, tuple[list[dict[str, Any]], float]] = {}
         self._tools: list[dict[str, Any]] | None = None
 
@@ -275,6 +294,9 @@ class MiniMaxConversationEntity(
         """When entity is added to Home Assistant."""
         _LOGGER.debug("Conversation entity added to hass, setting agent")
         await super().async_added_to_hass()
+        if self._memory_enabled and self._memory_store:
+            self._memory_store.set_hass(self.hass)
+            await self._memory_store.async_load()
         conversation.async_set_agent(self.hass, self.entry, self)
         _LOGGER.info("MiniMax conversation agent registered: %s", self._attr_unique_id)
 
@@ -288,7 +310,56 @@ class MiniMaxConversationEntity(
         """Get or cache tools."""
         if self._tools is None:
             self._tools = _get_homeassistant_tools(self.hass)
+            if self._memory_enabled:
+                self._tools.extend(self._get_memory_tools())
         return self._tools
+
+    def _get_memory_tools(self) -> list[dict[str, Any]]:
+        """Get memory-related tools for the agent."""
+        return [
+            {
+                "name": "remember_user_fact",
+                "description": "Save an important fact about the user that should be remembered for future conversations. Use this when the user tells you something about themselves, their preferences, habits, or anything they want you to remember.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "fact": {
+                            "type": "string",
+                            "description": "The fact to remember (e.g., 'User's name is John', 'User prefers 20°C in bedroom', 'User has a dog named Max')",
+                        },
+                        "category": {
+                            "type": "string",
+                            "description": "Optional category: 'name', 'preference', 'habit', 'device', 'other'",
+                        },
+                    },
+                    "required": ["fact"],
+                },
+            },
+            {
+                "name": "recall_user_facts",
+                "description": "Retrieve all previously remembered facts about the user. Call this at the start of conversations to know the user's context.",
+                "input_schema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "forget_user_fact",
+                "description": "Remove a specific fact from memory. Use when user corrects information or wants something forgotten.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "fact": {
+                            "type": "string",
+                            "description": "The fact or keyword to forget",
+                        },
+                    },
+                    "required": ["fact"],
+                },
+            },
+            {
+                "name": "forget_all_user_facts",
+                "description": "Remove all stored facts from memory. Use when user wants to clear all learned information.",
+                "input_schema": {"type": "object", "properties": {}},
+            },
+        ]
 
     async def _execute_tool_calls(
         self, tool_calls: list[dict[str, Any]], messages: list[dict[str, Any]]
@@ -299,8 +370,25 @@ class MiniMaxConversationEntity(
         for tool_call in tool_calls[:MAX_TOOL_CALLS]:
             name = tool_call.get("name", "")
             args = tool_call.get("input", {})
+            tool_use_id = tool_call.get("id", "")
 
             if not name:
+                continue
+
+            if name in (
+                "remember_user_fact",
+                "recall_user_facts",
+                "forget_user_fact",
+                "forget_all_user_facts",
+            ):
+                result = await self._execute_memory_tool(name, args)
+                results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_id,
+                        "content": result,
+                    }
+                )
                 continue
 
             if "." in name:
@@ -309,7 +397,7 @@ class MiniMaxConversationEntity(
                 results.append(
                     {
                         "type": "tool_result",
-                        "tool_use_id": tool_call.get("id", ""),
+                        "tool_use_id": tool_use_id,
                         "content": f"Invalid tool name: {name}",
                     }
                 )
@@ -321,12 +409,71 @@ class MiniMaxConversationEntity(
             results.append(
                 {
                     "type": "tool_result",
-                    "tool_use_id": tool_call.get("id", ""),
+                    "tool_use_id": tool_use_id,
                     "content": str(result),
                 }
             )
 
         return results
+
+    async def _execute_memory_tool(self, name: str, args: dict[str, Any]) -> str:
+        """Execute a memory-related tool call."""
+        if not self._memory_store:
+            return "Memory system not initialized"
+
+        if name == "remember_user_fact":
+            fact = args.get("fact", "")
+            category = args.get("category", "other")
+            if not fact:
+                return "No fact provided to remember"
+            memory_id = await self._memory_store.async_add_fact(fact, category)
+            return f"Remembered: {fact} (ID: {memory_id[:8]}...)"
+
+        elif name == "recall_user_facts":
+            facts = await self._memory_store.async_get_facts()
+            if not facts:
+                return "No memories stored yet."
+            fact_list = []
+            for f in facts:
+                cat = f.get("category", "other")
+                fact_list.append(f"- [{cat}] {f['fact']}")
+            return f"Remembered facts:\n" + "\n".join(fact_list)
+
+        elif name == "forget_user_fact":
+            fact = args.get("fact", "")
+            if not fact:
+                return "No fact specified to forget"
+            removed = await self._memory_store.async_remove_fact(fact)
+            if removed:
+                return f"Forgotten: {fact}"
+            return f"Could not find memory matching: {fact}"
+
+        elif name == "forget_all_user_facts":
+            count = await self._memory_store.async_get_memory_count()
+            await self._memory_store.async_clear()
+            return f"Cleared all {count} memories"
+
+        return "Unknown memory command"
+
+    async def _get_memory_section(self) -> str:
+        """Get memory section for system prompt."""
+        if not self._memory_store:
+            return ""
+
+        try:
+            memories = await self._memory_store.async_get_facts()
+            if not memories:
+                return ""
+
+            memory_lines = ["\n\n## Known User Facts:"]
+            for m in memories:
+                cat = m.get("category", "other")
+                memory_lines.append(f"- {m['fact']}")
+
+            return "\n".join(memory_lines)
+        except Exception as err:
+            LOGGER.warning("Could not get memories for system prompt: %s", err)
+            return ""
 
     async def _chat_with_api(
         self,
@@ -458,6 +605,10 @@ class MiniMaxConversationEntity(
             "You are EVA, a friendly AI home assistant. Be helpful and concise.",
         )
         system_prompt = _build_system_prompt(user_prompt, self.hass, DOMAIN)
+        if self._memory_enabled and self._memory_store:
+            memory_section = await self._get_memory_section()
+            if memory_section:
+                system_prompt += memory_section
         model = self.subentry.data.get(CONF_CHAT_MODEL, RECOMMENDED_CHAT_MODEL)
 
         user_message = {
