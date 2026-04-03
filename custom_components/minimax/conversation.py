@@ -102,7 +102,17 @@ def _get_homeassistant_tools(hass: HomeAssistant) -> list[dict[str, Any]]:
     ]
 
     try:
-        descriptions = hass.services.async_get_all_descriptions()
+        services = hass.services.async_services()
+        descriptions = {}
+        for domain in services:
+            if domain in key_domains:
+                descriptions[domain] = {}
+                for service_name, service_data in services[domain].items():
+                    descriptions[domain][service_name] = {
+                        "name": service_name,
+                        "description": service_data.get("description", ""),
+                        "fields": service_data.get("fields", {}),
+                    }
     except Exception as err:
         LOGGER.warning("Could not get service descriptions: %s", err)
         return tools
@@ -386,7 +396,7 @@ class MiniMaxConversationEntity(
                     {
                         "type": "tool_result",
                         "tool_use_id": tool_use_id,
-                        "content": result,
+                        "content": str(result),
                     }
                 )
                 continue
@@ -544,7 +554,7 @@ class MiniMaxConversationEntity(
 
         if self._expiry_minutes:
             now = time.time()
-            expiry_seconds = self._expiry_minutes * 60
+            expiry_seconds = float(self._expiry_minutes) * 60
             expired = [
                 cid
                 for cid, (_, timestamp) in self._conversation_history.items()
