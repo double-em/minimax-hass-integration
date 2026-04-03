@@ -52,7 +52,7 @@ python -m mypy .
 
 **Custom components path:** `/homeassistant/custom_components/minimax/`
 
-**Workflow:** Always write files locally first, then SCP to HA:
+**Workflow:** Update via HACS (Home Assistant Community Store). For manual deployment:
 
 ```bash
 # Create translations directory if needed:
@@ -76,6 +76,7 @@ ssh root@10.0.100.61 'tail /homeassistant/homeassistant.log | grep -i minimax'
 ```
 
 **Important:** 
+- For HACS updates: commit to GitHub, create a new release, then use HACS to redownload
 - After deploying, always restart HA with `ha core restart` and wait ~65 seconds
 - Verify files compile with `python3 -m py_compile` before restarting
 - manifest.json must include: `version`, `config_flow`, `requirements:[]`, `dependencies:[]`
@@ -271,6 +272,22 @@ When adding tests:
 - Test config flow with `config_flow.TestFlows`
 
 ## Common Issues and Solutions
+
+### Config flow "400 Bad Request" error when reconfiguring
+- **Cause**: `SelectSelector` options must use `SelectOptionDict` objects with **string values**, not plain dicts or integers
+- **Fix**: Use `SelectOptionDict(label="...", value="string_value")` for all select options
+- **Example**:
+  ```python
+  # WRONG - plain dict with integer value
+  {"label": "5 minutes", "value": 5}
+  
+  # CORRECT - SelectOptionDict with string value  
+  SelectOptionDict(label="5 minutes", value="5")
+  ```
+
+### Config flow "expected str for dictionary value" error
+- **Cause**: Same as above - SelectSelector doesn't accept plain dicts
+- **Fix**: Import `SelectOptionDict` from `homeassistant.helpers.selector` and use it for all `SelectSelector` options
 
 ### TTS/TTS preview grayed out in Voice Assistants settings
 - **Cause**: Language format incorrect (e.g., "English" instead of "en-US")
