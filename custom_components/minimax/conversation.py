@@ -539,7 +539,23 @@ class MiniMaxConversationEntity(
                 for result_item in tool_results:
                     messages.append({"role": "user", "content": [result_item]})
 
-                return await self._chat_with_api(system_prompt, messages, tools, model)
+                try:
+                    return await self._chat_with_api(
+                        system_prompt, messages, tools, model
+                    )
+                except Exception as tool_error:
+                    if (
+                        "tool id" in str(tool_error).lower()
+                        and "not found" in str(tool_error).lower()
+                    ):
+                        _LOGGER.warning(
+                            "Tool result ID mismatch, returning text response without tool results"
+                        )
+                        text = "\n".join(text_parts) if text_parts else ""
+                        if not text:
+                            text = "Jeg husker informationen, men der opstod en fejl ved bekræftelse."
+                        return text, messages
+                    raise
 
             text = "\n".join(text_parts) if text_parts else ""
             return text, messages
