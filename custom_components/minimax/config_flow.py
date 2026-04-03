@@ -22,6 +22,7 @@ from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
+    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -275,7 +276,10 @@ def async_minimax_option_schema(
                 ): SelectSelector(
                     SelectSelectorConfig(
                         mode=SelectSelectorMode.DROPDOWN,
-                        options=CHAT_MODELS,
+                        options=[
+                            SelectOptionDict(label=m["label"], value=m["value"])
+                            for m in CHAT_MODELS
+                        ],
                     )
                 ),
                 vol.Optional(
@@ -304,10 +308,10 @@ def async_minimax_option_schema(
                     SelectSelectorConfig(
                         mode=SelectSelectorMode.DROPDOWN,
                         options=[
-                            {"label": "5 minutes", "value": 5},
-                            {"label": "15 minutes", "value": 15},
-                            {"label": "30 minutes", "value": 30},
-                            {"label": "1 hour", "value": 60},
+                            SelectOptionDict(label="5 minutes", value=5),
+                            SelectOptionDict(label="15 minutes", value=15),
+                            SelectOptionDict(label="30 minutes", value=30),
+                            SelectOptionDict(label="1 hour", value=60),
                         ],
                     )
                 ),
@@ -320,7 +324,7 @@ def async_minimax_option_schema(
         for voice_id in VOICE_IDS.get("en-US", []):
             voice_name = voice_id.split("_", 2)[-1].replace("_", " ").replace("-", " ")
             voice_options.append(
-                {"label": f"English - {voice_name}", "value": voice_id}
+                SelectOptionDict(label=f"English - {voice_name}", value=voice_id)
             )
 
         schema.update(
