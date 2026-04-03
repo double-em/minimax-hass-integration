@@ -308,10 +308,10 @@ def async_minimax_option_schema(
                     SelectSelectorConfig(
                         mode=SelectSelectorMode.DROPDOWN,
                         options=[
-                            SelectOptionDict(label="5 minutes", value=5),
-                            SelectOptionDict(label="15 minutes", value=15),
-                            SelectOptionDict(label="30 minutes", value=30),
-                            SelectOptionDict(label="1 hour", value=60),
+                            SelectOptionDict(label="5 minutes", value="5"),
+                            SelectOptionDict(label="15 minutes", value="15"),
+                            SelectOptionDict(label="30 minutes", value="30"),
+                            SelectOptionDict(label="1 hour", value="60"),
                         ],
                     )
                 ),
