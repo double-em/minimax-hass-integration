@@ -181,10 +181,7 @@ class MiniMaxConfigFlow(ConfigFlow, domain=DOMAIN):
 class LLMSubentryFlowHandler(ConfigSubentryFlow):
     """Flow for managing subentries."""
 
-    def __init__(self) -> None:
-        """Initialize the subentry flow handler."""
-        super().__init__()
-        self._last_rendered_recommended = False
+    last_rendered_recommended = False
 
     @property
     def _is_new(self) -> bool:
@@ -218,10 +215,10 @@ class LLMSubentryFlowHandler(ConfigSubentryFlow):
             else:
                 options = self._get_reconfigure_subentry().data.copy()
                 _LOGGER.debug("Existing subentry, current options: %s", options)
-            self._last_rendered_recommended = bool(options.get(CONF_RECOMMENDED, False))
+            self.last_rendered_recommended = bool(options.get(CONF_RECOMMENDED, False))
         else:
             _LOGGER.debug("User provided input: %s", user_input)
-            if user_input.get(CONF_RECOMMENDED) == self._last_rendered_recommended:
+            if user_input.get(CONF_RECOMMENDED) == self.last_rendered_recommended:
                 if self._is_new:
                     _LOGGER.info("Creating new subentry: %s", self._subentry_type)
                     return self.async_create_entry(
@@ -234,7 +231,7 @@ class LLMSubentryFlowHandler(ConfigSubentryFlow):
                     self._get_reconfigure_subentry(),
                     data=user_input,
                 )
-            self._last_rendered_recommended = user_input.get(CONF_RECOMMENDED, False)
+            self.last_rendered_recommended = user_input.get(CONF_RECOMMENDED, False)
             options = user_input
 
         schema = async_minimax_option_schema(self._is_new, self._subentry_type, options)
