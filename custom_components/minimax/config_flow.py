@@ -230,11 +230,17 @@ class LLMSubentryFlowHandler(ConfigSubentryFlow):
             self.last_rendered_recommended = user_input.get(CONF_RECOMMENDED, False)
             options = user_input
 
-        schema = async_minimax_option_schema(self._is_new, self._subentry_type, options)
-        _LOGGER.debug("Showing form for subentry type: %s", self._subentry_type)
-        return self.async_show_form(
-            step_id="set_options", data_schema=vol.Schema(schema), errors=errors
-        )
+        try:
+            schema = async_minimax_option_schema(
+                self._is_new, self._subentry_type, options
+            )
+            _LOGGER.debug("Showing form for subentry type: %s", self._subentry_type)
+            return self.async_show_form(
+                step_id="set_options", data_schema=vol.Schema(schema), errors=errors
+            )
+        except Exception as ex:
+            _LOGGER.exception("Error building schema: %s", ex)
+            return self.async_abort(reason="unknown")
 
     async_step_reconfigure = async_step_set_options
     async_step_user = async_step_set_options
