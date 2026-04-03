@@ -11,6 +11,7 @@ _LOGGER = logging.getLogger(__name__)
 from homeassistant.config_entries import (
     SOURCE_REAUTH,
     ConfigEntry,
+    ConfigEntryState,
     ConfigFlow,
     ConfigFlowResult,
     ConfigSubentryFlow,
@@ -194,6 +195,9 @@ class LLMSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """Set subentry options."""
+        if self._get_entry().state != ConfigEntryState.LOADED:
+            return self.async_abort(reason="entry_not_loaded")
+
         _LOGGER.debug(
             "async_step_set_options called for %s, input: %s",
             self._subentry_type,
