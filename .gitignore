@@ -1,6 +1,7 @@
 # Environment and secrets
 .env
 .env.*
+.claude/settings.local.json
 
 minimax_hass_integration/
 
